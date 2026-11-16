@@ -117,6 +117,7 @@ func PrintHelp() {
 	fmt.Println("rm <title> - удаляет задачу с конкретным названием")
 	fmt.Println("save_to <filename .gob ext> - сохраняет задачи в отдельный файл")
 	fmt.Println("load_from <filename .gob ext> - загружает задачи из отдельного файла")
+	fmt.Println("reset - Очищает список задач. Требуется ввести подтверждение.")
 }
 
 func Load(tl *TaskList, filename string, ignoreNotExist bool) error {
@@ -266,7 +267,7 @@ func SearchTask(tl TaskList, query string) {
 	found := false
 	fmt.Println("Совпадения:")
 	for _, task := range tl {
-		if strings.Contains(task.Status, query) {
+		if strings.Contains(task.Title, query) {
 			found = true
 			fmt.Print("  - ")
 			PrintTask(task)
