@@ -20,7 +20,7 @@ func main() {
 	taskList := TaskList{}
 	fmt.Println("0/ Добро пожаловать в todo 2000!")
 	fmt.Println("Выход exit, помощь help")
-	loadErr := Load(&taskList, "tasks.gob")
+	loadErr := Load(&taskList, "tasks.gob", true)
 	if loadErr != nil {
 		fmt.Println("Ошибка при загрузке задач", loadErr)
 		return
@@ -28,51 +28,6 @@ func main() {
 	handleIO(&taskList)
 	fmt.Println("Спасибо что не ctrl+c :D")
 	fmt.Println("До скорой встречи 0/")
-}
-
-func Load(tasks *TaskList, filename string) error {
-	file, err := os.Open(filename)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	var loaded []Task
-	decodeErr := gob.NewDecoder(file).Decode(&loaded)
-	closeErr := file.Close()
-	if decodeErr != nil {
-		return decodeErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-
-	*tasks = loaded
-	return nil
-}
-
-func Save(tl TaskList, fileName string) error {
-	file, createErr := os.Create(fileName)
-	if createErr != nil {
-		return createErr
-	}
-	encodeErr := gob.NewEncoder(file).Encode(tl)
-	closeErr := file.Close()
-	if encodeErr != nil {
-		return encodeErr
-	}
-	return closeErr
-}
-
-func HandleDefaultSave(tl TaskList) {
-	err := Save(tl, "tasks.gob")
-	if err != nil {
-		fmt.Println("Не удалось сохранить задачи:", err)
-	} else {
-		fmt.Println("Задачи сохранены")
-	}
 }
 
 func handleIO(tl *TaskList) {
@@ -98,7 +53,7 @@ func handleIO(tl *TaskList) {
 		case "help":
 			PrintHelp()
 		case "list":
-			PrintTasks(*tl)
+			PrintTasks(*tl, args)
 		case "search":
 			if len(args) != 1 {
 				fmt.Println("Ожидается подстрока для поиска, если подстрока содержит пробел используйте кавычки")
@@ -138,6 +93,12 @@ func handleIO(tl *TaskList) {
 				continue
 			}
 			HandleDefaultSave(*tl)
+		case "reset":
+			HandleReset(tl, scanner)
+		case "load_from":
+			HandleLoadFrom(tl, args)
+		case "save_to":
+			HandleSaveTo(*tl, args)
 		default:
 			fmt.Println("Неизвестная команда. Введите help для списка команд")
 		}
@@ -149,10 +110,85 @@ func PrintHelp() {
 	fmt.Println("exit - выйти из программы")
 	fmt.Println("help - показать команды")
 	fmt.Println("list - показать все задачи")
+	fmt.Println("list <status optional> <priority optional> - показать все задачи")
 	fmt.Println("search <substr> - задачи в названии которых есть подстрока")
 	fmt.Println("add <title> <priority: [low/high]> - добавляет задачу с конкретным приоритетом")
 	fmt.Println("change <title> <status: [todo/progress/done]> <priority: [low/high]> - меняет статус и приоритет задачи с конкретным названием")
 	fmt.Println("rm <title> - удаляет задачу с конкретным названием")
+	fmt.Println("save_to <filename .gob ext> - сохраняет задачи в отдельный файл")
+	fmt.Println("load_from <filename .gob ext> - загружает задачи из отдельного файла")
+}
+
+func Load(tl *TaskList, filename string, ignoreNotExist bool) error {
+	file, err := os.Open(filename)
+	if os.IsNotExist(err) && ignoreNotExist {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	var loaded TaskList
+	decodeErr := gob.NewDecoder(file).Decode(&loaded)
+	closeErr := file.Close()
+	if decodeErr != nil {
+		return decodeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+
+	*tl = loaded
+	return nil
+}
+
+func Save(tl TaskList, fileName string) error {
+	file, createErr := os.Create(fileName)
+	if createErr != nil {
+		return createErr
+	}
+	encodeErr := gob.NewEncoder(file).Encode(tl)
+	closeErr := file.Close()
+	if encodeErr != nil {
+		return encodeErr
+	}
+	return closeErr
+}
+
+func HandleDefaultSave(tl TaskList) {
+	err := Save(tl, "tasks.gob")
+	if err != nil {
+		fmt.Println("Не удалось сохранить изменения:", err)
+	} else {
+		fmt.Println("Все изменения сохранены")
+	}
+}
+
+func HandleLoadFrom(tl *TaskList, args []string) {
+	if len(args) != 1 {
+		fmt.Println("Пожалуйста укажите только имя файла")
+		return
+	}
+	err := Load(tl, args[0], false)
+	if err != nil {
+		fmt.Println("Не удалось загрузить:", err)
+		return
+	}
+	fmt.Println("Успешно загружено!")
+	HandleDefaultSave(*tl)
+}
+
+func HandleSaveTo(tl TaskList, args []string) {
+	if len(args) != 1 {
+		fmt.Println("Пожалуйста укажите только имя файла")
+		return
+	}
+	err := Save(tl, args[0])
+	if err != nil {
+		fmt.Println("Не удалось сохранить:", err)
+		return
+	}
+	fmt.Println("Успешное сохранение!")
 }
 
 func AddTask(tl *TaskList, task Task) error {
@@ -242,14 +278,46 @@ func SearchTask(tl TaskList, query string) {
 	fmt.Println("Найдено 0")
 }
 
-func PrintTasks(tl TaskList) {
-	if len(tl) == 0 {
-		fmt.Println("Список задач пуст")
-		return
+func PrintTasks(tl TaskList, args []string) {
+	found := false
+	status := ""
+	priority := ""
+
+	for _, arg := range args {
+		switch arg {
+		case "low", "high":
+			if priority != "" {
+				fmt.Println("multiple priority filter not supported")
+				return
+			}
+			priority = arg
+		case "todo", "progress", "done":
+			if status != "" {
+				fmt.Println("multiple status filter not supported")
+				return
+			}
+			status = arg
+		default:
+			fmt.Println("unknown argument", arg)
+			return
+		}
 	}
+
 	for i, task := range tl {
+		skipStatus := status != "" && status != task.Status
+		skipPrior := priority != "" && priority != task.Priority
+		skipPrint := skipStatus || skipPrior
+		if skipPrint {
+			continue
+		}
+		found = true
 		fmt.Print("  ", i+1, " | ")
 		PrintTask(task)
+	}
+
+	if !found {
+		fmt.Println("Найдено 0")
+		return
 	}
 }
 
@@ -283,4 +351,27 @@ func ParseUserInput(userInput string) []string {
 		args = append(args, word)
 	}
 	return args
+}
+
+func HandleReset(tl *TaskList, scanner *bufio.Scanner) {
+	fmt.Println("Снести все таски? Точно? y - подтвердить, n - прервать:")
+	for {
+		fmt.Print("> ")
+		scanner.Scan()
+		err := scanner.Err()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		text := scanner.Text()
+		switch strings.ToLower(text) {
+		case "y":
+			*tl = TaskList{}
+			HandleDefaultSave(*tl)
+			return
+		case "n":
+			fmt.Println("Отмена")
+			return
+		}
+	}
 }
