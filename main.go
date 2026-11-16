@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -19,9 +20,59 @@ func main() {
 	taskList := TaskList{}
 	fmt.Println("0/ Добро пожаловать в todo 2000!")
 	fmt.Println("Выход exit, помощь help")
+	loadErr := Load(&taskList, "tasks.gob")
+	if loadErr != nil {
+		fmt.Println("Ошибка при загрузке задач", loadErr)
+		return
+	}
 	handleIO(&taskList)
 	fmt.Println("Спасибо что не ctrl+c :D")
 	fmt.Println("До скорой встречи 0/")
+}
+
+func Load(tasks *TaskList, filename string) error {
+	file, err := os.Open(filename)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	var loaded []Task
+	decodeErr := gob.NewDecoder(file).Decode(&loaded)
+	closeErr := file.Close()
+	if decodeErr != nil {
+		return decodeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+
+	*tasks = loaded
+	return nil
+}
+
+func Save(tl TaskList, fileName string) error {
+	file, createErr := os.Create(fileName)
+	if createErr != nil {
+		return createErr
+	}
+	encodeErr := gob.NewEncoder(file).Encode(tl)
+	closeErr := file.Close()
+	if encodeErr != nil {
+		return encodeErr
+	}
+	return closeErr
+}
+
+func HandleDefaultSave(tl TaskList) {
+	err := Save(tl, "tasks.gob")
+	if err != nil {
+		fmt.Println("Не удалось сохранить задачи:", err)
+	} else {
+		fmt.Println("Задачи сохранены")
+	}
 }
 
 func handleIO(tl *TaskList) {
@@ -64,7 +115,7 @@ func handleIO(tl *TaskList) {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Println("Задача добавлена")
+			HandleDefaultSave(*tl)
 		case "change":
 			if len(args) < 3 {
 				fmt.Println("Необходимо указать название статус и приоритет")
@@ -75,7 +126,7 @@ func handleIO(tl *TaskList) {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Println("Задача изменена")
+			HandleDefaultSave(*tl)
 		case "rm":
 			if len(args) < 1 {
 				fmt.Println("Необходимо указать название задачи для удаления")
@@ -86,7 +137,7 @@ func handleIO(tl *TaskList) {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Println("Задача удалена")
+			HandleDefaultSave(*tl)
 		default:
 			fmt.Println("Неизвестная команда. Введите help для списка команд")
 		}
@@ -197,7 +248,7 @@ func PrintTasks(tl TaskList) {
 		return
 	}
 	for i, task := range tl {
-		fmt.Print("  ", i + 1, " | ")
+		fmt.Print("  ", i+1, " | ")
 		PrintTask(task)
 	}
 }
