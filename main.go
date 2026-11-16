@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 )
 
 type Task struct {
@@ -14,34 +17,91 @@ type TaskList []Task
 
 func main() {
 	taskList := TaskList{}
-	AddTask(&taskList, Task{
-		Title:    "Task1",
-		Status:   "todo",
-		Priority: "low",
-	})
-	AddTask(&taskList, Task{
-		Title:    "Task2",
-		Status:   "progress",
-		Priority: "high",
-	})
-	AddTask(&taskList, Task{
-		Title:    "Task3",
-		Status:   "done",
-		Priority: "high",
-	})
-	PrintTasks(taskList)
-	fmt.Println(AddTask(&taskList, Task{}))
-	fmt.Println(AddTask(&taskList, Task{Title: "ok title"}))
-	fmt.Println(AddTask(&taskList, Task{Title: "ok title", Status: "todo"}))
-	fmt.Println(AddTask(&taskList, taskList[0]))
-	ChangeTaskByTitle(taskList, taskList[0].Title, "done", taskList[0].Priority)
-	PrintTasks(taskList)
-	fmt.Println(ChangeTaskByTitle(taskList, taskList[0].Title, "todo", "random"))
-	fmt.Println(ChangeTaskByTitle(taskList, "random", "todo", "random"))
-	RemoveTaskByTitle(&taskList, taskList[0].Title)
-	PrintTasks(taskList)
-	fmt.Println(RemoveTaskByTitle(&taskList, "some task"))
-	fmt.Println(RemoveTaskByTitle(&taskList, "Task2"))
+	fmt.Println("0/ Добро пожаловать в todo 2000!")
+	fmt.Println("Выход exit, помощь help")
+	handleIO(&taskList)
+	fmt.Println("Спасибо что не ctrl+c :D")
+	fmt.Println("До скорой встречи 0/")
+}
+
+func handleIO(tl *TaskList) {
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("> ")
+		scanner.Scan()
+		err := scanner.Err()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		parts := ParseUserInput(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+
+		command := parts[0]
+		args := parts[1:]
+		switch command {
+		case "exit":
+			return
+		case "help":
+			PrintHelp()
+		case "list":
+			PrintTasks(*tl)
+		case "search":
+			if len(args) != 1 {
+				fmt.Println("Ожидается подстрока для поиска, если подстрока содержит пробел используйте кавычки")
+				continue
+			}
+			SearchTask(*tl, args[0])
+		case "add":
+			if len(args) < 2 {
+				fmt.Println("Необходимо указать название и приоритет")
+				continue
+			}
+			err = AddTask(tl, Task{Title: args[0], Status: "todo", Priority: args[1]})
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Println("Задача добавлена")
+		case "change":
+			if len(args) < 3 {
+				fmt.Println("Необходимо указать название статус и приоритет")
+				continue
+			}
+			err := ChangeTaskByTitle(*tl, args[0], args[1], args[2])
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Println("Задача изменена")
+		case "rm":
+			if len(args) < 1 {
+				fmt.Println("Необходимо указать название задачи для удаления")
+				continue
+			}
+			err := RemoveTaskByTitle(tl, args[0])
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Println("Задача удалена")
+		default:
+			fmt.Println("Неизвестная команда. Введите help для списка команд")
+		}
+	}
+}
+
+func PrintHelp() {
+	fmt.Println("Commands:")
+	fmt.Println("exit - выйти из программы")
+	fmt.Println("help - показать команды")
+	fmt.Println("list - показать все задачи")
+	fmt.Println("search <substr> - задачи в названии которых есть подстрока")
+	fmt.Println("add <title> <priority: [low/high]> - добавляет задачу с конкретным приоритетом")
+	fmt.Println("change <title> <status: [todo/progress/done]> <priority: [low/high]> - меняет статус и приоритет задачи с конкретным названием")
+	fmt.Println("rm <title> - удаляет задачу с конкретным названием")
 }
 
 func AddTask(tl *TaskList, task Task) error {
@@ -115,8 +175,61 @@ func ChangeTaskByTitle(tl TaskList, title string, status string, priority string
 	return errors.New("task not found")
 }
 
-func PrintTasks(tl TaskList) {
+func SearchTask(tl TaskList, query string) {
+	found := false
+	fmt.Println("Совпадения:")
 	for _, task := range tl {
-		fmt.Println(task.Title, "-", task.Status)
+		if strings.Contains(task.Status, query) {
+			found = true
+			fmt.Print("  - ")
+			PrintTask(task)
+		}
 	}
+	if found {
+		return
+	}
+	fmt.Println("Найдено 0")
+}
+
+func PrintTasks(tl TaskList) {
+	if len(tl) == 0 {
+		fmt.Println("Список задач пуст")
+		return
+	}
+	for i, task := range tl {
+		fmt.Print("  ", i + 1, " | ")
+		PrintTask(task)
+	}
+}
+
+func PrintTask(t Task) {
+	fmt.Println("Заголовок:", t.Title, "Статус:", t.Status, "Приоритет:", t.Priority)
+}
+
+func ParseUserInput(userInput string) []string {
+	args := []string{}
+	word := ""
+	inside := false
+	for _, r := range userInput {
+		switch r {
+		case '"', '\'':
+			inside = !inside
+			continue
+		case ' ':
+			if inside {
+				word += string(r)
+				continue
+			}
+			if word != "" {
+				args = append(args, word)
+				word = ""
+			}
+		default:
+			word += string(r)
+		}
+	}
+	if word != "" {
+		args = append(args, word)
+	}
+	return args
 }
